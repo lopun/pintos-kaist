@@ -28,7 +28,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 /* sleep thread를 따로 관리하는 list*/
-static struct list sleep_list;
+struct list sleep_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -293,6 +293,13 @@ thread_exit (void) {
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
+}
+
+/* priority 기준으로 order하기 위한 함수 */
+bool
+priority_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
+{
+  return list_entry(thread_list_1, struct thread, elem)->priority < list_entry(thread_list_2, struct thread, elem)->priority;
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
@@ -619,11 +626,4 @@ void thread_priority_donate(struct thread *target, int new_priority) {
             thread_yield();
         }
     }
-}
-
-/* priority 기준으로 order하기 위한 함수 */
-bool
-priority_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
-{
-  return list_entry(thread_list_1, struct thread, elem)->priority < list_entry(thread_list_2, struct thread, elem)->priority;
 }

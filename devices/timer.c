@@ -88,6 +88,13 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
+/* wake up time 기준으로 order하기 위한 함수 */
+bool
+wake_up_time_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
+{
+  return list_entry(thread_list_1, struct thread, elem)->wake_up_time < list_entry(thread_list_2, struct thread, elem)->wake_up_time;
+}
+
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
@@ -205,11 +212,4 @@ real_time_sleep (int64_t num, int32_t denom) {
 		ASSERT (denom % 1000 == 0);
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
-}
-
-/* wake up time 기준으로 order하기 위한 함수 */
-bool
-wake_up_time_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
-{
-  return list_entry(thread_list_1, struct thread, elem)->wake_up_time < list_entry(thread_list_2, struct thread, elem)->wake_up_time;
 }
