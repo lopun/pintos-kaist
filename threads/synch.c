@@ -233,16 +233,18 @@ lock_release (struct lock *lock) {
 	struct thread *holder = lock->holder;
 	list_remove (&lock->elem); // remove lock from lock list
 
-	int max_priority = holder->original_priority;
+	int max_highest_priority = holder->original_priority;
 	struct list_elem *e;
 
 	// find max priority in lock list
 	for (e = list_begin(&holder->locks); e != list_end(&holder->locks); e = list_next(e)) {
 		struct lock *l = list_entry(e, struct lock, elem);
-		if (l->semaphore.max_priority > max_priority) {
-			max_priority = l->semaphore.max_priority;
+		if (l->semaphore.max_priority > max_highest_priority) {
+			max_highest_priority = l->semaphore.max_priority;
 		}
 	}
+
+	thread_priority_donate (holder, max_highest_priority); // priority donation
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
