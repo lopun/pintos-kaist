@@ -219,6 +219,14 @@ lock_try_acquire (struct lock *lock) {
 	return success;
 }
 
+static bool
+lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
+{
+  const struct lock* x = list_entry(a, struct lock, elem);
+  const struct lock* y = list_entry(b, struct lock, elem);
+  return x->priority > y->priority;
+}
+
 /* Releases LOCK, which must be owned by the current thread.
    This is lock_release function.
 
@@ -230,27 +238,21 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	struct thread *holder = lock->holder;
-	if (!list_empty(&holder->locks)) {
-		list_remove (&lock->elem); // remove lock from lock list
-	}
-
-	int max_highest_priority = holder->original_priority;
-	struct list_elem *e;
-
-	// find max priority in lock list
-	for (e = list_begin(&holder->locks); e != list_end(&holder->locks);) {
-		struct lock *l = list_entry(e, struct lock, elem);
-		if (l->semaphore.max_priority > max_highest_priority) {
-			max_highest_priority = l->semaphore.max_priority;
-		}
-		e = list_next(e);
-	}
-
-	thread_priority_donate (holder, max_highest_priority); // priority donation
-
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+
+	struct thread *cur = thread_current ();
+
+	list_remove (&lock->elem); // remove lock from lock list
+
+	if (list_empty(&cur->locks)) {
+		thread_priority_donate (cur, cur->original_priority); // priority donation
+	} else {
+		list_sort(&cur->locks, lock_priority_compare_func, NULL); // sort lock list
+		struct lock *max_lock = list_entry(list_front(&cur->locks), struct lock, elem); // get max lock
+		
+		thread_priority_donate(cur, max_lock->priority); // priority donation
+	}
 }
 
 /* Returns true if the current thread holds LOCK, false
