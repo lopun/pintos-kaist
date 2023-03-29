@@ -193,11 +193,11 @@ lock_acquire (struct lock *lock) {
 
 	if (holder != NULL && cur->priority > holder->priority) { // priority donation
 		holder->priority = cur->priority; // change priority
-		list_push_back (&holder->locks, &lock->elem); // add lock to lock list
 	}
 
 	sema_down (&lock->semaphore); // wait for lock
-	lock->holder = thread_current (); // get lock
+	lock->holder = cur; // get lock
+	list_push_back (&holder->locks, &lock->elem); // add lock to lock list
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
