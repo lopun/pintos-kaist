@@ -43,6 +43,7 @@ timer_init (void) {
 	outb (0x40, count >> 8);
 
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+	list_init (&sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -91,10 +92,19 @@ timer_elapsed (int64_t then) {
 void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
+	int64_t wake_up_time = start + ticks;
 
+	struct thread *cur = thread_current ();
+	enum intr_level old_level;
+
+	/* need to change thread-blocking thread_sleep into non-blocking thrad_sleep. modifying thread.c can be included */
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+
+	old_level = intr_disable (); // disable interrupt and store old interrupt level
+	cur->wake_up_time = wake_up_time; // set wake up time to current thread
+	list_insert_ordered (&sleep_list, &cur->elem, wake_up_time_compare_func, NULL); // insert current thread into sleep_list
+	thread_block();
+	intr_set_level (old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -120,12 +130,24 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	while (!list_empty (&sleep_list))
+	{
+		struct list_elem *first = list_front (&sleep_list); // 다음으로 깨울 sleep_list elem
+		struct thread *sleep_thread = list_entry (first, struct thread, elem); // thread로 변환
+
+		if (ticks >= sleep_thread->wake_up_time)
+		{
+			list_remove (first); // remove thread from sleep_list
+			thread_unblock (sleep_thread); // unblock thread
+		}
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -183,4 +205,11 @@ real_time_sleep (int64_t num, int32_t denom) {
 		ASSERT (denom % 1000 == 0);
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
+}
+
+/* wake up time 기준으로 order하기 위한 함수 */
+bool
+wake_up_time_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
+{
+  return list_entry(thread_list_1, struct thread, elem)->wake_up_time < list_entry(thread_list_2, struct thread, elem)->wake_up_time;
 }
