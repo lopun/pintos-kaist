@@ -150,7 +150,7 @@ sema_test_helper (void *sema_) {
 		sema_up (&sema[1]);
 	}
 }
-
+
 /* Initializes LOCK.  A lock can be held by at most a single
    thread at any given time.  Our locks are not "recursive", that
    is, it is an error for the thread currently holding a lock to
@@ -231,7 +231,9 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	struct thread *holder = lock->holder;
-	list_remove (&lock->elem); // remove lock from lock list
+	if (!list_empty(&holder->locks)) {
+		list_remove (&lock->elem); // remove lock from lock list
+	}
 
 	int max_highest_priority = holder->original_priority;
 	struct list_elem *e;
