@@ -174,6 +174,15 @@ lock_init (struct lock *lock) {
 	sema_init (&lock->semaphore, 1);
 }
 
+/* lock_priority_compare_func is used to compare the priority of two locks. */
+static bool
+lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
+{
+  const struct lock* x = list_entry(a, struct lock, elem);
+  const struct lock* y = list_entry(b, struct lock, elem);
+  return x->priority > y->priority;
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -235,14 +244,6 @@ lock_try_acquire (struct lock *lock) {
 	if (success)
 		lock->holder = thread_current ();
 	return success;
-}
-
-static bool
-lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
-{
-  const struct lock* x = list_entry(a, struct lock, elem);
-  const struct lock* y = list_entry(b, struct lock, elem);
-  return x->priority > y->priority;
 }
 
 /* Releases LOCK, which must be owned by the current thread.
