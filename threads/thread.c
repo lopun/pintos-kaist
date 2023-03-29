@@ -305,16 +305,34 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
+
+	if (curr != idle_thread) {
+		list_push_back (&ready_list, &curr->elem); // push current thread to ready_list
+		list_sort(&ready_list, priority_compare_func, NULL); // sort ready_list
+
+		struct thread *next = list_entry(list_front(&ready_list), struct thread, elem); // next thread
+
+		if (next->priority > curr->priority) {
+			do_schedule (THREAD_READY); // schedule next thread
+		} else {
+			list_remove(&curr->elem); // remove current thread from ready_list
+		}
+	} else {
+		do_schedule (THREAD_READY); // schedule next thread
+	}
+
 	intr_set_level (old_level);
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->original_priority = new_priority;
+	
+	if (thread_current ()->priority < new_priority)
+		thread_current ()->priority = new_priority;
+	else
+		thread_yield ();
 }
 
 /* Returns the current thread's priority. */
@@ -590,4 +608,22 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+void thread_priority_donate(struct thread *target, int new_priority) {
+    target->priority = new_priority;
+
+    if (target == thread_current() && !list_empty(&ready_list)) { // 현재 thread가 donate 받은 경우
+        struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
+        if (next != NULL && next->priority > new_priority) { // ready_list의 가장 앞에 있는 thread의 priority가 더 높은 경우
+            thread_yield();
+        }
+    }
+}
+
+/* priority 기준으로 order하기 위한 함수 */
+bool
+priority_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
+{
+  return list_entry(thread_list_1, struct thread, elem)->priority < list_entry(thread_list_2, struct thread, elem)->priority;
 }

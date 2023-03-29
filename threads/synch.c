@@ -188,8 +188,16 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	struct thread *cur = thread_current ();
+	struct thread *holder = lock->holder; // lock holder
+
+	if (holder != NULL && cur->priority > holder->priority) { // priority donation
+		holder->priority = cur->priority; // change priority
+		list_push_back (&holder->locks, &lock->elem); // add lock to lock list
+	}
+
+	sema_down (&lock->semaphore); // wait for lock
+	lock->holder = thread_current (); // get lock
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -222,6 +230,20 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	struct thread *holder = lock->holder;
+	list_remove (&lock->elem); // remove lock from lock list
+
+	int max_priority = holder->original_priority;
+	struct list_elem *e;
+
+	// find max priority in lock list
+	for (e = list_begin(&holder->locks); e != list_end(&holder->locks); e = list_next(e)) {
+		struct lock *l = list_entry(e, struct lock, elem);
+		if (l->semaphore.max_priority > max_priority) {
+			max_priority = l->semaphore.max_priority;
+		}
+	}
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -235,7 +257,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 
 	return lock->holder == thread_current ();
 }
-
+
 /* One semaphore in a list. */
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
