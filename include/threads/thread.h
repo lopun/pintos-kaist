@@ -95,6 +95,10 @@ struct thread {
 	struct lock *waiting_lock;			/* Lock that thread is waiting for. */
 	struct list locks;					/* List of locks. */
 
+	int64_t wake_up_time; /* thread가 깨어나야 하는 시간 */
+	struct list_elem elems;           	/* List element. */
+	struct list_elem wait_elems;			/* List element for wait. */
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -110,7 +114,6 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
-	int64_t wake_up_time; /* thread가 깨어나야 하는 시간 */
 };
 
 /* If false (default), use round-robin scheduler.
@@ -122,7 +125,7 @@ extern struct list sleep_list;
 void thread_init (void);
 void thread_start (void);
 
-void thread_tick (void);
+void thread_tick (int64_t tick);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);

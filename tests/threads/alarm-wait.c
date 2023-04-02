@@ -99,9 +99,7 @@ test_sleep (int thread_cnt, int iterations)
 
   /* Acquire the output lock in case some rogue thread is still
      running. */
-  printf ("Acquiring lock...");
   lock_acquire (&test.output_lock);
-  printf ("Acquiring lock done");
 
   /* Print completion order. */
   product = 0;

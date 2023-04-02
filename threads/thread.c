@@ -140,7 +140,7 @@ thread_start (void) {
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
-thread_tick (void) {
+thread_tick (int64_t tick) {
 	struct thread *t = thread_current ();
 
 	/* Update statistics. */
@@ -153,9 +153,29 @@ thread_tick (void) {
 	else
 		kernel_ticks++;
 
+	await_thread(tick);
+
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+}
+
+void
+awake_thread (int64_t tick) {
+	struct list_elem *e;
+
+	ASSERT (intr_get_level () == INTR_OFF);
+
+	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e))
+	{
+		struct thread *t = list_entry(e, struct thread, wait_elems);
+
+		if (t->wake_up_time <= tick) {
+			t->wake_up_time = 0;
+			list_remove (&t->wait_elems);
+			thread_unblock (t);
+		}
+	}
 }
 
 /* Prints thread statistics. */
