@@ -66,15 +66,7 @@ static void schedule (void);
 static tid_t allocate_tid (void);
 
 /* Returns true if T appears to point to a valid thread. */
-// #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
-static bool
-is_thread (struct thread *t)
-{
-	ASSERT (t != NULL);
-	ASSERT (t->magic == THREAD_MAGIC);
-	printf("t->magic: %x", t->magic);
-	return t != NULL && t->magic == THREAD_MAGIC;
-}
+#define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
 /* Returns the running thread.
  * Read the CPU's stack pointer `rsp', and then round that
@@ -158,7 +150,7 @@ awake_thread (int64_t tick) {
 
 	ASSERT (intr_get_level () == INTR_OFF);
 
-	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e))
+	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e))
 	{
 		struct thread *t = list_entry(e, struct thread, wait_elems);
 
