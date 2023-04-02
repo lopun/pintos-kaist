@@ -58,6 +58,15 @@ lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b,
   return x->priority > y->priority;
 }
 
+static bool
+sema_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
+{
+  const struct semaphore_elem* x = list_entry(a, struct semaphore_elem, elem);
+  const struct semaphore_elem* y = list_entry(b, struct semaphore_elem, elem);
+  ASSERT(x != NULL && y != NULL);
+  return x->semaphore.max_priority > y->semaphore.max_priority;
+}
+
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -343,7 +352,10 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+	// sort threads in condition's waiters
+	waiter.semaphore.max_priority = thread_current()->priority;
+	list_insert_ordered (&cond->waiters, &(waiter.elem), sema_priority_compare_func, NULL);
+
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
