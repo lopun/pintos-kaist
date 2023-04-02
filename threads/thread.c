@@ -26,7 +26,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+struct list ready_list;
 /* sleep thread를 따로 관리하는 list*/
 struct list sleep_list;
 
