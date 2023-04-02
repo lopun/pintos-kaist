@@ -93,12 +93,15 @@ test_sleep (int thread_cnt, int iterations)
       thread_create (name, PRI_DEFAULT, sleeper, t);
     }
   
+  printf ("Sleeping for %d ticks...", test.start - timer_ticks ());
   /* Wait long enough for all the threads to finish. */
   timer_sleep (100 + thread_cnt * iterations * 10 + 100);
 
   /* Acquire the output lock in case some rogue thread is still
      running. */
+  printf ("Acquiring lock...");
   lock_acquire (&test.output_lock);
+  printf ("Acquiring lock done");
 
   /* Print completion order. */
   product = 0;
