@@ -109,7 +109,7 @@ timer_sleep (int64_t ticks) {
 	t->wake_up_time = end_tick;
 
 	// put T into the wait queue
-	list_push_back (&ready_list, &t->wait_elems);
+	list_push_back (&sleep_list, &t->wait_elems);
 
 	// make the current thread block (sleeped)
 	thread_block();	
@@ -146,18 +146,6 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick (timer_ticks());
-
-	while (!list_empty (&sleep_list))
-	{
-		struct list_elem *first = list_front (&sleep_list); // 다음으로 깨울 sleep_list elem
-		struct thread *sleep_thread = list_entry (first, struct thread, elem); // thread로 변환
-
-		if (ticks >= sleep_thread->wake_up_time)
-		{
-			list_remove (first); // remove thread from sleep_list
-			thread_unblock (sleep_thread); // unblock thread
-		}
-	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
