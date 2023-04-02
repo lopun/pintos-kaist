@@ -137,29 +137,6 @@ thread_start (void) {
 	sema_down (&idle_started);
 }
 
-/* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
-void
-thread_tick (int64_t tick) {
-	struct thread *t = thread_current ();
-
-	/* Update statistics. */
-	if (t == idle_thread)
-		idle_ticks++;
-#ifdef USERPROG
-	else if (t->pml4 != NULL)
-		user_ticks++;
-#endif
-	else
-		kernel_ticks++;
-
-	await_thread(tick);
-
-	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
-		intr_yield_on_return ();
-}
-
 void
 awake_thread (int64_t tick) {
 	struct list_elem *e;
@@ -176,6 +153,29 @@ awake_thread (int64_t tick) {
 			thread_unblock (t);
 		}
 	}
+}
+
+/* Called by the timer interrupt handler at each timer tick.
+   Thus, this function runs in an external interrupt context. */
+void
+thread_tick (int64_t tick) {
+	struct thread *t = thread_current ();
+
+	/* Update statistics. */
+	if (t == idle_thread)
+		idle_ticks++;
+#ifdef USERPROG
+	else if (t->pml4 != NULL)
+		user_ticks++;
+#endif
+	else
+		kernel_ticks++;
+
+	awake_thread(tick);
+
+	/* Enforce preemption. */
+	if (++thread_ticks >= TIME_SLICE)
+		intr_yield_on_return ();
 }
 
 /* Prints thread statistics. */
