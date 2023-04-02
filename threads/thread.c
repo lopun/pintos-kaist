@@ -81,6 +81,13 @@ static tid_t allocate_tid (void);
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
+/* priority 기준으로 order하기 위한 함수 */
+bool
+priority_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
+{
+  return list_entry(thread_list_1, struct thread, elem)->priority > list_entry(thread_list_2, struct thread, elem)->priority;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -323,13 +330,6 @@ thread_exit (void) {
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
-}
-
-/* priority 기준으로 order하기 위한 함수 */
-bool
-priority_compare_func (const struct list_elem *thread_list_1, const struct list_elem *thread_list_2, void *aux UNUSED)
-{
-  return list_entry(thread_list_1, struct thread, elem)->priority > list_entry(thread_list_2, struct thread, elem)->priority;
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
