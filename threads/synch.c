@@ -197,27 +197,32 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	struct lock *current_lock = lock;
 	struct thread *cur = thread_current ();
-	struct thread *holder = lock->holder; // lock holder
+	struct thread *holder = lock->holder;
 
+	// Current thread is waiting on lock
 	cur->waiting_lock = lock;
 
+	// If lock is already held by another thread, donate priority
 	if (holder == NULL) {
-		lock->priority = cur->priority;
+		current_lock->priority = cur->priority;
 	}
 
-	while (holder != NULL && cur->priority > holder->priority) { // priority donation
+	// while lock is held by another thread
+	while (holder != NULL && cur->priority > holder->priority) {
 		thread_priority_donate (holder, cur->priority);
 
-		if (lock->priority < cur->priority) {
-			lock->priority = cur->priority;
+		// if lock is already held by another thread, donate priority
+		if (current_lock->priority < cur->priority) {
+			current_lock->priority = cur->priority;
 		}
 
-		lock = holder->waiting_lock;
-		if (lock == NULL) {
+		current_lock = holder->waiting_lock;
+		if (current_lock == NULL) {
 			break;
 		}
-		holder = lock->holder;
+		holder = current_lock->holder;
 	}
 
 	sema_down (&lock->semaphore); // wait for lock
