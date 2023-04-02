@@ -466,9 +466,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
-	list_init(&t->locks);
 	t->original_priority = priority;
+	t->waiting_lock = NULL;
+	t->wake_up_time = 0;
+	list_init(&t->locks);
 	t->magic = THREAD_MAGIC;
+
+	intr_set_level (intr_disable ());
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -602,7 +606,6 @@ static void
 schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
-	printf ("schedule: curr=%s, next=%s", curr->name, next->name);
 
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
