@@ -66,7 +66,14 @@ static void schedule (void);
 static tid_t allocate_tid (void);
 
 /* Returns true if T appears to point to a valid thread. */
-#define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
+// #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
+static bool
+is_thread (struct thread *t)
+{
+	ASSERT (t != NULL);
+	ASSERT (t->magic == THREAD_MAGIC);
+	return t != NULL && t->magic == THREAD_MAGIC;
+}
 
 /* Returns the running thread.
  * Read the CPU's stack pointer `rsp', and then round that
@@ -606,8 +613,6 @@ static void
 schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
-	printf("next: %p\n", next);
-	printf("next thread priority: %d\n", next->priority);
 
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
