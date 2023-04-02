@@ -99,18 +99,21 @@ wake_up_time_compare_func (const struct list_elem *thread_list_1, const struct l
 void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
-	int64_t wake_up_time = start + ticks;
 
-	struct thread *cur = thread_current ();
-	enum intr_level old_level;
-
-	/* need to change thread-blocking thread_sleep into non-blocking thrad_sleep. modifying thread.c can be included */
 	ASSERT (intr_get_level () == INTR_ON);
+	enum intr_level old_level = intr_disable ();
 
-	old_level = intr_disable (); // disable interrupt and store old interrupt level
-	cur->wake_up_time = wake_up_time; // set wake up time to current thread
-	list_insert_ordered (&sleep_list, &cur->elem, wake_up_time_compare_func, NULL); // insert current thread into sleep_list
-	thread_block();
+	struct thread *t = thread_current();
+	int64_t end_tick = start + ticks;
+
+	t->wake_up_time = end_tick;
+
+	// put T into the wait queue
+	list_push_back (&sleep_list, &t->elem);
+
+	// make the current thread block (sleeped)
+	thread_block();	
+
 	intr_set_level (old_level);
 }
 
