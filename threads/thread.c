@@ -72,6 +72,7 @@ is_thread (struct thread *t)
 {
 	ASSERT (t != NULL);
 	ASSERT (t->magic == THREAD_MAGIC);
+	printf("t->magic: %x", t->magic);
 	return t != NULL && t->magic == THREAD_MAGIC;
 }
 
