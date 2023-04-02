@@ -109,7 +109,7 @@ timer_sleep (int64_t ticks) {
 	t->wake_up_time = end_tick;
 
 	// put T into the wait queue
-	list_push_back (&sleep_list, &t->wait_elems);
+	list_push_back (&ready_list, &t->wait_elems);
 
 	// make the current thread block (sleeped)
 	thread_block();	
