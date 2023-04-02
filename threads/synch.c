@@ -55,6 +55,7 @@ lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b,
 {
   const struct lock* x = list_entry(a, struct lock, elem);
   const struct lock* y = list_entry(b, struct lock, elem);
+  ASSERT(x != NULL && y != NULL);
   return x->priority > y->priority;
 }
 
