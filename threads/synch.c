@@ -49,6 +49,15 @@ sema_init (struct semaphore *sema, unsigned value) {
 	list_init (&sema->waiters);
 }
 
+/* lock_priority_compare_func is used to compare the priority of two locks. */
+static bool
+lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
+{
+  const struct lock* x = list_entry(a, struct lock, elem);
+  const struct lock* y = list_entry(b, struct lock, elem);
+  return x->priority > y->priority;
+}
+
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -66,9 +75,10 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered (&sema->waiters, &thread_current()->elem, lock_priority_compare_func, NULL);
 		thread_block ();
 	}
+
 	sema->value--;
 	intr_set_level (old_level);
 }
@@ -105,14 +115,20 @@ sema_try_down (struct semaphore *sema) {
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
+	struct thread *target = NULL;
 
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+
 	sema->value++;
+	if (!list_empty (&sema->waiters)) {
+		list_sort(&(sema->waiters), lock_priority_compare_func, NULL);
+
+		// the thread of highest priority (in sema waiters) should wake up
+		target = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+		thread_unblock (target);
+	}
 	intr_set_level (old_level);
 }
 
@@ -173,15 +189,6 @@ lock_init (struct lock *lock) {
 	lock->holder = NULL;
 	lock->priority = PRI_MIN;
 	sema_init (&lock->semaphore, 1);
-}
-
-/* lock_priority_compare_func is used to compare the priority of two locks. */
-static bool
-lock_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
-{
-  const struct lock* x = list_entry(a, struct lock, elem);
-  const struct lock* y = list_entry(b, struct lock, elem);
-  return x->priority > y->priority;
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
