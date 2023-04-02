@@ -606,6 +606,8 @@ static void
 schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
+	printf("next: %p\n", next);
+	printf("next thread priority: %d\n", next->priority);
 
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
