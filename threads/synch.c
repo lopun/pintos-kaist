@@ -55,6 +55,14 @@ struct semaphore_elem {
 	struct semaphore semaphore;         /* This semaphore. */
 };
 
+static bool
+thread_priority_compare_func(const struct list_elem* a, const struct list_elem *b, void* aux UNUSED)
+{
+  const struct thread* x = list_entry(a, struct thread, elem);
+  const struct thread* y = list_entry(b, struct thread, elem);
+  ASSERT(x != NULL && y != NULL);
+  return x->priority > y->priority;
+}
 
 /* lock_priority_compare_func is used to compare the priority of two locks. */
 static bool
@@ -92,7 +100,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_insert_ordered (&sema->waiters, &thread_current()->elem, lock_priority_compare_func, NULL);
+		list_insert_ordered (&sema->waiters, &thread_current()->elem, thread_priority_compare_func, NULL);
 		thread_block ();
 	}
 
@@ -140,7 +148,7 @@ sema_up (struct semaphore *sema) {
 
 	sema->value++;
 	if (!list_empty (&sema->waiters)) {
-		list_sort(&(sema->waiters), lock_priority_compare_func, NULL);
+		list_sort(&(sema->waiters), thread_priority_compare_func, NULL);
 
 		// the thread of highest priority (in sema waiters) should wake up
 		target = list_entry (list_pop_front (&sema->waiters), struct thread, elem);

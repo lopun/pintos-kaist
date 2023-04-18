@@ -366,7 +366,7 @@ thread_set_priority (int new_priority) {
 
 	if (!list_empty(&ready_list)) {
 		struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
-		if (next->priority > cur->priority && next != NULL) {
+		if (next->priority > new_priority && next != NULL) {
 			thread_yield();
 		}
 	}
@@ -655,19 +655,6 @@ allocate_tid (void) {
 
 void thread_priority_donate(struct thread *target, int new_priority) {
     target->priority = new_priority;
-
-	// propagate priority donation to threads waiting on locks held by the target thread
-    struct list_elem *e;
-    for (e = list_begin (&target->locks); e != list_end (&target->locks); e = list_next (e)) {
-        struct lock *lock = list_entry (e, struct lock, elem);
-        if (lock->semaphore.value == 0 && lock->holder != NULL) { // lock is held and there are waiting threads
-            struct thread *holder = lock->holder;
-            if (holder->priority < new_priority) { // propagate donation
-                thread_priority_donate(holder, new_priority);
-            }
-        }
-    }
-
 
     if (target == thread_current() && !list_empty(&ready_list)) { // 현재 thread가 donate 받은 경우
         struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
