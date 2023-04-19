@@ -48,7 +48,11 @@ process_create_initd (const char *file_name) {
 	fn_copy = palloc_get_page (0);
 	if (fn_copy == NULL)
 		return TID_ERROR;
+		
 	strlcpy (fn_copy, file_name, PGSIZE);
+
+	char *token, *save_ptr;
+	strtok_r (file_name, " ", &save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -92,21 +96,34 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if (is_kernel_vaddr (va)) {
+		return true;
+	}
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
+	if (parent_page == NULL) {
+		return false;
+	}
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page (PAL_USER | PAL_ZERO);
+	if (newpage == NULL) {
+		return false;
+	}
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy (newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -121,8 +138,11 @@ __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
+
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if;
+	parent_if = &parent->parent_if;	 // Save parent's intr_frame
+
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
@@ -134,6 +154,7 @@ __do_fork (void *aux) {
 		goto error;
 
 	process_activate (current);
+	
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
@@ -148,6 +169,27 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+	
+	/* Check if the file descriptor table is full */
+	if (parent->fd_idx==FDCOUNT_LIMIT) {
+		succ = false;
+		goto error;
+	}
+
+	/* Duplicate file descriptor table */
+	for (int fd=0; fd < FDCOUNT_LIMIT; fd++) {
+		if (fd <= 1) {
+			current->fd_table[fd] = parent->fd_table[fd];
+		}
+		else if (parent->fd_table[fd] == NULL) {
+			current->fd_table[fd] = file_duplicate (parent->fd_table[fd]);
+		}
+	}
+
+	current->fd_idx = parent->fd_idx;	
+	sema_up (&current->sema_fork);	// Wake up
+
+	if_.R.rax = 0; // Child process returns 0
 
 	process_init ();
 
@@ -155,7 +197,8 @@ __do_fork (void *aux) {
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	sema_up (&current->sema_fork);
+	exit (TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
@@ -181,6 +224,7 @@ process_exec (void *f_name) {
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
+
 	if (!success)
 		return -1;
 
@@ -204,7 +248,22 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	return -1;
+	struct thread *child_thread = retrieve_child_thread (child_tid);
+
+	if (child_thread == NULL || child_thread->is_waited_flag == true)
+		return -1;
+
+	child_thread->is_waited_flag = true;
+
+	/* Parent thread wait until child thread exits */
+	sema_down(&child_thread->sema_wait);
+	int exit_status = child_thread->exit_status;
+
+	/* Remove child thread from the list */
+	remove_child_thread (child_thread);
+	sema_up(&child_thread->sema_free);
+
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -215,6 +274,12 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	palloc_free_multiple (curr->fd_table, FDT_PAGES);
+	file_close (curr->running_file);
+	sema_up (&curr->sema_wait);
+
+	/* Parent thread wait until child thread exits */
+	sema_down (&curr->sema_free);
 
 	process_cleanup ();
 }
@@ -322,6 +387,21 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * Returns true if successful, false otherwise. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
+	/* parsing file_name with strtok_r */
+	char *save_ptr;
+	char *token = strtok_r (file_name, " ", &save_ptr);
+	char *args[120];
+	int arg_count = 0;
+
+	while (token != NULL) {
+		args[arg_count] = token;
+		arg_count++;
+		token = strtok_r (NULL, " ", &save_ptr);
+	}
+
+	memcpy(file_name, args[0], strlen(args[0]) + 1);
+	/* parsing end */
+
 	struct thread *t = thread_current ();
 	struct ELF ehdr;
 	struct file *file = NULL;
@@ -341,6 +421,10 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	/* Deny writes to running file. */
+	t->running_file = file;
+	file_deny_write (file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -416,13 +500,61 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	pass_argument (if_, args, arg_count);
 
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// removed file_close because we're doing it in process_exit
 	return success;
+}
+
+void pass_argument(struct intr_frame *if_, char **args, int arg_count) {
+    int i;
+    int arg_len[arg_count];
+    int total_len = 0;
+    int *arg_addr[arg_count];
+    int *arg_addr_ptr = if_->rsp;
+
+    for (i = 0; i < arg_count; i++) {
+        arg_len[i] = strlen(args[i]) + 1;
+        total_len += arg_len[i];
+    }
+
+    // align the stack pointer to a multiple of 8
+    if_->rsp = (void *)((unsigned long long)if_->rsp & ~7ull);
+
+    // push the arguments onto the stack in reverse order
+    for (i = arg_count - 1; i >= 0; i--) {
+        if_->rsp -= arg_len[i];
+        memcpy(if_->rsp, args[i], arg_len[i]);
+        arg_addr[i] = (int *)if_->rsp;
+    }
+
+    // push a null pointer sentinel
+    if_->rsp -= sizeof(int);
+    *(int *)if_->rsp = 0;
+
+    // push the argument addresses onto the stack in reverse order
+    for (i = arg_count - 1; i >= 0; i--) {
+        if_->rsp -= sizeof(int *);
+        *(int **)if_->rsp = arg_addr[i];
+    }
+
+    // push argc and argv onto the stack
+    if_->rsp -= sizeof(int *);
+    *(int **)if_->rsp = (int *)if_->rsp + 1; // argv[0] = NULL
+    if_->rsp -= sizeof(int);
+    *(int *)if_->rsp = arg_count;
+
+    // set the values of RDI and RSI to argc and argv
+    if_->R.rdi = arg_count;
+    if_->R.rsi = (unsigned long long)if_->rsp + sizeof(int *);
+
+    // push a fake return address
+    if_->rsp -= sizeof(void *);
+    *(void **)if_->rsp = NULL;
 }
 
 
@@ -637,3 +769,31 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+struct file *retrieve_process_file(int fd) {
+	if (fd < 0 || fd > FDCOUNT_LIMIT)
+		return NULL;
+
+	struct thread *cur = thread_current();
+
+	if (cur->fd_table[fd] == 0 || cur->fd_table[fd] == NULL)
+		return NULL;
+	else
+		return cur->fd_table[fd];
+}
+
+struct thread *retrieve_child_thread(int pid) {
+	struct thread *cur = thread_current();
+	struct list_elem *e;
+	for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) {
+		struct thread *t = list_entry(e, struct thread, child_elem);
+		if (t->tid == pid) {
+			return t;
+		}
+	}
+	return NULL;	
+}
+
+void remove_child_thread(struct thread *child_process){
+	list_remove(&child_process->child_elem); 
+}

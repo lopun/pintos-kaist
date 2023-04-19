@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,10 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* Data structure to store the file descriptor. */
+#define FDT_PAGES 3					  		// pages for file descriptor table
+#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9) 	// file descriptor count limit
 
 /* A kernel thread or user process.
  *
@@ -101,6 +106,22 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
+	/* UserProg Project */
+	struct file **fd_table;
+	int fd_idx;
+
+	struct intr_frame parent_if;        /* Interrupt frame for parent */
+	struct list_elem child_elem;	    /* Child list element */
+	struct list child_list;				/* Child list */
+	struct semaphore sema_fork;
+	bool is_waited_flag;		 		/* Process wait flag */
+	int exit_status;		 			/* exit status */
+	struct semaphore sema_wait;			/* wait semaphore */
+	struct semaphore sema_free;			/* load semaphore */
+
+	struct file *running_file; /* running file */
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
