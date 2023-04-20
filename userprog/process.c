@@ -79,9 +79,23 @@ initd (void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *parent = thread_current ();
+	tid_t child_tid;
+
+	memcpy (&parent->parent_if, if_, sizeof (struct intr_frame));
+
+	child_tid = thread_create (name, PRI_DEFAULT, __do_fork, thread_current ());
+	if (child_tid == TID_ERROR)
+		return TID_ERROR;
+
+	struct thread *child_thread = retrieve_child_thread (child_tid);
+	sema_down(&child_thread->sema_fork);
+
+	if (child_thread->exit_status == -1) {
+		return TID_ERROR;
+	}
+
+	return child_tid;
 }
 
 #ifndef VM
@@ -274,7 +288,7 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-	palloc_free_multiple (curr->fd_table, FDT_PAGES);
+	palloc_free_multiple (curr->fd_table, FD_TABLE_PAGES);
 	file_close (curr->running_file);
 	sema_up (&curr->sema_wait);
 
@@ -511,50 +525,41 @@ done:
 }
 
 void pass_argument(struct intr_frame *if_, char **args, int arg_count) {
-    int i;
-    int arg_len[arg_count];
-    int total_len = 0;
-    int *arg_addr[arg_count];
-    int *arg_addr_ptr = if_->rsp;
+    int i, j, cnt = 0;
+    uintptr_t start_addr = if_->rsp;
 
-    for (i = 0; i < arg_count; i++) {
-        arg_len[i] = strlen(args[i]) + 1;
-        total_len += arg_len[i];
-    }
-
-    // align the stack pointer to a multiple of 8
-    if_->rsp = (void *)((unsigned long long)if_->rsp & ~7ull);
-
-    // push the arguments onto the stack in reverse order
+    // Copy arguments
     for (i = arg_count - 1; i >= 0; i--) {
-        if_->rsp -= arg_len[i];
-        memcpy(if_->rsp, args[i], arg_len[i]);
-        arg_addr[i] = (int *)if_->rsp;
+        cnt += strlen(args[i]) + 1;
+        for (j = strlen(args[i]); j >= 0; j--) {
+            if_->rsp = if_->rsp - 1;
+            memset(if_->rsp, args[i][j], sizeof(char));
+        }
     }
 
-    // push a null pointer sentinel
-    if_->rsp -= sizeof(int);
-    *(int *)if_->rsp = 0;
-
-    // push the argument addresses onto the stack in reverse order
-    for (i = arg_count - 1; i >= 0; i--) {
-        if_->rsp -= sizeof(int *);
-        *(int **)if_->rsp = arg_addr[i];
+    // Word-align
+    int align = 8 - (cnt % 8);
+    for (int k = 0; k < align; k++) {
+        if_->rsp = if_->rsp - 1;
+        memset(if_->rsp, 0, sizeof(char));
     }
 
-    // push argc and argv onto the stack
-    if_->rsp -= sizeof(int *);
-    *(int **)if_->rsp = (int *)if_->rsp + 1; // argv[0] = NULL
-    if_->rsp -= sizeof(int);
-    *(int *)if_->rsp = arg_count;
+    // Set up pointers to arguments
+    for (i = arg_count; i >= 0; i--) {
+        if_->rsp = if_->rsp - 8;
 
-    // set the values of RDI and RSI to argc and argv
+        if (i == arg_count)
+            memset(if_->rsp, 0, sizeof(char *));
+        else {
+            start_addr = start_addr - strlen(args[i]) - 1;
+            memcpy(if_->rsp, &start_addr, sizeof(start_addr));
+        }
+    }
+
+    if_->rsp = if_->rsp - 8;
+    memset(if_->rsp, 0, sizeof(void *));
     if_->R.rdi = arg_count;
-    if_->R.rsi = (unsigned long long)if_->rsp + sizeof(int *);
-
-    // push a fake return address
-    if_->rsp -= sizeof(void *);
-    *(void **)if_->rsp = NULL;
+    if_->R.rsi = if_->rsp + 8;
 }
 
 
@@ -784,7 +789,9 @@ struct file *retrieve_process_file(int fd) {
 
 struct thread *retrieve_child_thread(int pid) {
 	struct thread *cur = thread_current();
+
 	struct list_elem *e;
+
 	for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) {
 		struct thread *t = list_entry(e, struct thread, child_elem);
 		if (t->tid == pid) {

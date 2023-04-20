@@ -43,7 +43,6 @@ timer_init (void) {
 	outb (0x40, count >> 8);
 
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
-	list_init (&sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -101,20 +100,9 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	enum intr_level old_level = intr_disable ();
 
-	struct thread *t = thread_current();
-	int64_t end_tick = start + ticks;
-
-	t->wake_up_time = end_tick;
-
-	// put T into the wait queue
-	list_push_back (&sleep_list, &t->wait_elems);
-
-	// make the current thread block (sleeped)
-	thread_block();	
-
-	intr_set_level (old_level);
+	if(timer_elapsed(start) < ticks) 
+		thread_sleep(start + ticks);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -145,7 +133,11 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick (timer_ticks());
+	thread_tick ();
+
+	int64_t current_ticks = retrieve_next_time_to_be_awaked();
+	if (ticks == current_ticks)
+		awake_thread(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

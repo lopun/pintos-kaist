@@ -348,7 +348,7 @@ void close (int fd) {
 	struct file * file_;
 	struct thread *cur = thread_current();
 	
-	if (fd < 0) // if fd is negative, return
+	if (fd < 0)
 		return;
 
 	file_ = retrieve_process_file(fd);

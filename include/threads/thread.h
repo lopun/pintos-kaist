@@ -30,8 +30,8 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* Data structure to store the file descriptor. */
-#define FDT_PAGES 3					  		// pages for file descriptor table
-#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9) 	// file descriptor count limit
+#define FD_TABLE_PAGES 3					  		// pages for file descriptor table
+#define FDCOUNT_LIMIT FD_TABLE_PAGES *(1 << 9) 	// file descriptor count limit
 
 /* A kernel thread or user process.
  *
@@ -98,7 +98,8 @@ struct thread {
 	int priority;                       /* Priority. */
 	int original_priority;				/* Original priority. */
 	struct lock *waiting_lock;			/* Lock that thread is waiting for. */
-	struct list locks;					/* List of locks. */
+	struct list donations;
+	struct list_elem donation_elem;
 
 	int64_t wake_up_time; /* thread가 깨어나야 하는 시간 */
 	struct list_elem elems;           	/* List element. */
@@ -146,12 +147,15 @@ extern struct list sleep_list;
 
 void thread_init (void);
 void thread_start (void);
+void thread_sleep(int64_t ticks);
 
-void thread_tick (int64_t tick);
+void thread_tick (void);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
+int64_t retrieve_next_time_to_be_awaked(void);
+void awake_thread(int64_t current_tick);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
@@ -165,6 +169,7 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void check_highest_priority_ready_thread(void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
@@ -174,5 +179,8 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 void thread_priority_donate(struct thread *target, int new_priority);
+void donate_thread_priority(void);
+void reset_thread_priority(void);
+void remove_from_donations(struct lock *lock);
 
 #endif /* threads/thread.h */
